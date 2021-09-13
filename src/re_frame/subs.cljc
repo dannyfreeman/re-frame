@@ -183,15 +183,19 @@
                          1 (let [f (first input-args)]
                              (when-not (fn? f)
                                (console :error err-header "2nd argument expected to be an inputs function, got:" f))
-                             f)
+                             f)  ;; D:TODO how would we extend the signal function expectations to accept the frame?
 
                          ;; one sugar pair
                          2 (let [[marker vec] input-args]
                              (when-not (= :<- marker)
                                (console :error err-header "expected :<-, got:" marker))
                              (fn inp-fn
-                               ([sub] (subscribe (frame-from sub) vec))
-                               ([sub _] (subscribe (frame-from sub) vec))))
+                               ([sub]
+                                (let [frame (frame-from sub)]
+                                  (subscribe frame vec)))
+                               ([sub _]
+                                (let [frame (frame-from sub)]
+                                  (subscribe frame vec)))))
 
                          ;; multiple sugar pairs
                          (let [pairs   (partition 2 input-args)
