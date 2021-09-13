@@ -3,6 +3,7 @@
             [reagent.ratom     :as r :refer-macros [reaction]]
             [re-frame.subs     :as subs]
             [re-frame.db       :as db]
+            [re-frame.interop  :refer [reagent-id]]
             [re-frame.core     :as re-frame]))
 
 (test/use-fixtures :each {:before (fn [] (subs/clear-all-handlers!))})
@@ -17,7 +18,15 @@
   (let [test-sub (subs/subscribe [:test-sub])]
     (is (= @db/app-db @test-sub))
     (reset! db/app-db 1)
-    (is (= 1 @test-sub))))
+    (is (= 1 @test-sub)))
+
+  (testing "with a provided frame"
+    (let [another-db (r/atom :frame)
+          test-sub (subs/subscribe another-db [:test-sub])]
+      (is (= @another-db @test-sub))
+      (reset! another-db :frame-changed)
+      (is (= :frame-changed @test-sub)))))
+
 
 (deftest test-chained-subs
   (re-frame/reg-sub-raw
@@ -30,16 +39,39 @@
 
   (re-frame/reg-sub-raw
     :a-b-sub
-    (fn [db [_]]
-      (let [a (subs/subscribe [:a-sub])
-            b (subs/subscribe [:b-sub])]
+    (fn [frame [_]]
+      ;; Reg-sub raw will have to know to use the current frame when subscribing if the don't want to use app-db
+      ;; That's why it's called raw, right?
+      (let [a (subs/subscribe frame [:a-sub])
+            b (subs/subscribe frame [:b-sub])]
         (reaction {:a @a :b @b}))))
 
   (let [test-sub (subs/subscribe [:a-b-sub])]
     (reset! db/app-db {:a 1 :b 2})
     (is (= {:a 1 :b 2} @test-sub))
     (swap! db/app-db assoc :b 3)
-    (is (= {:a 1 :b 3} @test-sub))))
+    (is (= {:a 1 :b 3} @test-sub)))
+
+  (testing "with a provided frame"
+    (let [another-db (r/atom {:a 1 :b 2})
+          test-sub   (subs/subscribe another-db [:a-b-sub])]
+      (reset! another-db {:a 3 :b 4})
+      (is (= {:a 3 :b 4} @test-sub))
+      (swap! another-db assoc :b 5)
+      (is (= {:a 3 :b 5} @test-sub))))
+
+  (testing "Raw sub ignore the provided frame, app-db is used."
+    (re-frame/reg-sub-raw
+      :a-b-sub-disregard-frame
+      (fn [frame [_]]
+        (let [a (subs/subscribe [:a-sub])
+              b (subs/subscribe [:b-sub])]
+          (reaction {:a @a :b @b}))))
+    (let [test-sub (subs/subscribe [:a-b-sub-disregard-frame])]
+      (reset! db/app-db {:a 1 :b 2})
+      (is (= {:a 1 :b 2} @test-sub))
+      (swap! db/app-db assoc :b 3)
+      (is (= {:a 1 :b 3} @test-sub)))))
 
 (deftest test-sub-parameters
   (re-frame/reg-sub-raw
@@ -48,7 +80,13 @@
 
   (let [test-sub (subs/subscribe [:test-sub :c])]
     (reset! db/app-db {:a 1 :b 2})
-    (is (= [1 :c] @test-sub))))
+    (is (= [1 :c] @test-sub)))
+
+  (testing "with a provided frame"
+    (let [another-db (r/atom {})
+          test-sub (subs/subscribe another-db [:test-sub :c])]
+      (reset! another-db {:a 3 :b 4})
+      (is (= [3 :c] @test-sub)))))
 
 
 (deftest test-sub-chained-parameters
@@ -63,13 +101,19 @@
   (re-frame/reg-sub-raw
     :a-b-sub
     (fn [db [_ c]]
-      (let [a (subs/subscribe [:a-sub c])
-            b (subs/subscribe [:b-sub c])]
+      (let [a (subs/subscribe db [:a-sub c])
+            b (subs/subscribe db [:b-sub c])]
         (reaction {:a @a :b @b}))))
 
   (let [test-sub (subs/subscribe [:a-b-sub :c])]
     (reset! db/app-db {:a 1 :b 2})
-    (is (= {:a [1 :c], :b [2 :c]} @test-sub))))
+    (is (= {:a [1 :c], :b [2 :c]} @test-sub)))
+
+  (testing "with another frame"
+    (let [another-db (r/atom {})
+          test-sub (subs/subscribe another-db [:a-b-sub :c])]
+      (reset! another-db {:a 3 :b 4})
+      (is (= {:a [3 :c], :b [4 :c]} @test-sub)))))
 
 (deftest test-nonexistent-sub
   (is (nil? (re-frame/subscribe [:non-existence]))))
@@ -87,16 +131,30 @@
       (swap! side-effect-atom inc)
       (reaction @db)))
 
- (let [test-sub (subs/subscribe [:side-effecting-handler])]
-    (reset! db/app-db :test)
-    (is (= :test @test-sub))
-    (is (= @side-effect-atom 1))
-    (subs/subscribe [:side-effecting-handler])  ;; this should be handled by cache
-    (is (= @side-effect-atom 1))
-    (subs/subscribe [:side-effecting-handler :a]) ;; should fire again because of the param
-    (is (= @side-effect-atom 2))
-    (subs/subscribe [:side-effecting-handler :a]) ;; this should be handled by cache
-    (is (= @side-effect-atom 2))))
+  (let [test-sub (subs/subscribe [:side-effecting-handler])]
+     (reset! db/app-db :test)
+     (is (= :test @test-sub))
+     (is (= @side-effect-atom 1))
+     (subs/subscribe [:side-effecting-handler])  ;; this should be handled by cache
+     (is (= @side-effect-atom 1))
+     (subs/subscribe [:side-effecting-handler :a]) ;; should fire again because of the param
+     (is (= @side-effect-atom 2))
+     (subs/subscribe [:side-effecting-handler :a]) ;; this should be handled by cache
+     (is (= @side-effect-atom 2)))
+
+  (testing "with another frame"
+    (reset! side-effect-atom 0)
+    (let [another-db (r/atom :eh)
+          test-sub (subs/subscribe another-db [:side-effecting-handler])]
+      (reset! another-db :test-2)
+      (is (= :test-2 @test-sub))
+      (is (= @side-effect-atom 1))
+      (subs/subscribe another-db [:side-effecting-handler])  ;; this should be handled by cache
+      (is (= @side-effect-atom 1))
+      (subs/subscribe another-db [:side-effecting-handler :a]) ;; should fire again because of the param
+      (is (= @side-effect-atom 2))
+      (subs/subscribe another-db [:side-effecting-handler :a]) ;; this should be handled by cache
+      (is (= @side-effect-atom 2)))))
 
 ;============== test clear-subscription-cache! ================
 
@@ -110,8 +168,18 @@
   (testing "cache miss"
     (is (= 1 @(subs/subscribe [:clear-subscription-cache!])))
     (is (some? (subs/cache-lookup [:clear-subscription-cache!]))))
-  (testing "clearing"
-    (subs/clear-subscription-cache!)
+  (testing "with another frame, should not collide with app-db"
+    (let [another-db (r/atom {})
+          id (reagent-id another-db)]
+      (testing "cold-cache"
+        (is (nil? (subs/cache-lookup [:clear-subscription-cache!] [] id))))
+      (testing "cache-miss"
+        (is (= 1 @(subs/subscribe another-db [:clear-subscription-cache!])))
+        (is (some? (subs/cache-lookup [:clear-subscription-cache!] [] id))))
+      (testing "clearing"
+        (subs/clear-subscription-cache!)
+        (is (nil? (subs/cache-lookup [:clear-subscription-cache!] [] id))))))
+  (testing "cleared"
     (is (nil? (subs/cache-lookup [:clear-subscription-cache!])))))
 
 ;============== test register-pure macros ================
