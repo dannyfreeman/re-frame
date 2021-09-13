@@ -37,8 +37,11 @@
   (satisfies? IDeref x))
 
 
-(defn make-reaction [f]
-  (reagent.ratom/make-reaction f))
+(defn make-reaction
+  ([f]
+   (reagent.ratom/make-reaction f))
+  ([f & {:as reaction-args}] ;; :on-set :on-dispose :auto-run
+   (apply reagent.ratom/make-reaction f (flatten (seq reaction-args)))))
 
 (defn add-on-dispose! [a-ratom f]
   (reagent.ratom/add-on-dispose! a-ratom f))
