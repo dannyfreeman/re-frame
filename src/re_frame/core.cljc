@@ -18,6 +18,26 @@
     [re-frame.utils            :as utils]
     [clojure.set               :as set]))
 
+(defprotocol Frame
+  (subscribe-to [this query]
+    "Create a subscription to a frame. See docs for `subscribe`.")
+  (dispatch-on [this event]
+    "Dispatch on a frame. See docs for `dispatch`.")
+  (dispatch-sync-on [this event]
+    "Synchronous dispatch on a frame. See docs for `dispatch-sync`."))
+
+(declare subscribe)
+(declare dispatch)
+(declare dispatch-sync)
+
+(extend-type RAtom
+  Frame
+  (subscribe-to [this query]
+    (subscribe this query))
+  (dispatch-on [this event]
+    (dispatch this event))
+  (dispatch-sync-on [this event]
+    (dispatch-sync this event)))
 
 ;; -- dispatch ----------------------------------------------------------------
 
@@ -406,7 +426,7 @@
   ([query]
    (subs/subscribe db/app-db query))
   ([frame-or-query & args]
-   (if (satisfies? RAtom frame-or-query)
+   (if (satisfies? Frame frame-or-query)
      (apply subs/subscribe frame-or-query args)
      (apply subs/subscribe db/app-db args))))
 
