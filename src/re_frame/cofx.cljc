@@ -3,6 +3,7 @@
     [re-frame.db           :refer [app-db]]
     [re-frame.interceptor  :refer [->interceptor]]
     [re-frame.registrar    :refer [get-handler register-handler]]
+    [re-frame.utils        :refer [frame-from]]
     [re-frame.loggers      :refer [console]]))
 
 
@@ -39,17 +40,26 @@
 
 ;; -- Builtin CoEffects Handlers  ---------------------------------------------
 
+;; :frame
+;;
+;; Adds to coeffects the current frame attached to the event vector.
+(reg-cofx
+  :frame
+  (fn [{:keys [event] :as coeffects}]
+    (assoc coeffects :frame (frame-from event))))
+
 ;; :db
 ;;
-;; Adds to coeffects the value in `app-db`, under the key `:db`
+;; Adds to coeffects the value in the current `frame`, under the key `:db`
 (reg-cofx
   :db
   (fn db-coeffects-handler
-    [coeffects]
-    (assoc coeffects :db @app-db)))
+    [{:keys [frame] :as coeffects}]
+    (assoc coeffects :db (deref frame))))
 
 
-;; Because this interceptor is used so much, we reify it
+;; Because these interceptors are used so much, we reify them
+(def inject-frame (inject-cofx :frame))
 (def inject-db (inject-cofx :db))
 
 

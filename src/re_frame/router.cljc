@@ -2,7 +2,8 @@
   (:require [re-frame.events  :refer [handle]]
             [re-frame.interop :refer [after-render empty-queue next-tick]]
             [re-frame.loggers :refer [console]]
-            [re-frame.trace   :as trace :include-macros true]))
+            [re-frame.trace   :as trace :include-macros true]
+            [re-frame.utils   :refer [with-frame]]))
 
 
 ;; -- Router Loop ------------------------------------------------------------
@@ -231,14 +232,15 @@
 ;;
 
 (defn dispatch
-  [event]
+  [frame event]
   (if (nil? event)
       (throw (ex-info "re-frame: you called \"dispatch\" without an event vector." {}))
-      (push event-queue event))
+      (push event-queue (with-frame event frame)))
   nil)                                           ;; Ensure nil return. See https://github.com/day8/re-frame/wiki/Beware-Returning-False
 
 (defn dispatch-sync
-  [event-v]
-  (handle event-v)
-  (-call-post-event-callbacks event-queue event-v)  ;; slightly ugly hack. Run the registered post event callbacks.
-  nil)                                              ;; Ensure nil return. See https://github.com/day8/re-frame/wiki/Beware-Returning-False
+  [frame event-v]
+  (let [event (with-frame event-v frame)]
+    (handle event)
+    (-call-post-event-callbacks event-queue event)     ;; slightly ugly hack. Run the registered post event callbacks.
+    nil))                                              ;; Ensure nil return. See https://github.com/day8/re-frame/wiki/Beware-Returning-False

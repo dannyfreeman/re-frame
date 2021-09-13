@@ -1,6 +1,8 @@
 (ns re-frame.restore-test
   (:require [cljs.test :refer-macros [is deftest async use-fixtures testing]]
             [re-frame.core :refer [make-restore-fn reg-sub subscribe]]
+            [re-frame.db :refer [app-db]]
+            [re-frame.interop :refer [reagent-id]]
             [re-frame.subs :as subs]))
 
 ;; TODO: future tests in this area could check DB state and registrations are being correctly restored.
@@ -25,11 +27,12 @@
   (testing "no existing subs, then making one subscription"
     (register-test-subs)
     (let [original-subs @subs/query->reaction
-          restore-fn    (make-restore-fn)]
+          restore-fn    (make-restore-fn)
+          app-db-id     (reagent-id app-db)]
       (is (zero? (count original-subs)))
       @(subscribe [:test-sub])
       (is (one? (count @subs/query->reaction)))
-      (is (contains? @subs/query->reaction [[:test-sub] []]))
+      (is (contains? @subs/query->reaction [app-db-id [:test-sub] []]))
       (restore-fn)
       (is (zero? (count @subs/query->reaction))))))
 
@@ -38,13 +41,14 @@
     (register-test-subs)
     @(subscribe [:test-sub])
     (let [original-subs @subs/query->reaction
-          restore-fn    (make-restore-fn)]
+          restore-fn    (make-restore-fn)
+          app-db-id     (reagent-id app-db)]
       (is (one? (count original-subs)))
       @(subscribe [:test-sub2])
-      (is (contains? @subs/query->reaction [[:test-sub2] []]))
+      (is (contains? @subs/query->reaction [app-db-id [:test-sub2] []]))
       (is (two? (count @subs/query->reaction)))
       (restore-fn)
-      (is (not (contains? @subs/query->reaction [[:test-sub2] []])))
+      (is (not (contains? @subs/query->reaction [app-db-id [:test-sub2] []])))
       (is (one? (count @subs/query->reaction))))))
 
 (deftest make-restore-fn-test3

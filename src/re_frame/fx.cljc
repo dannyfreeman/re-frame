@@ -50,13 +50,16 @@
              (trace/with-trace
                {:op-type :event/do-fx}
                (let [effects            (:effects context)
-                     effects-without-db (dissoc effects :db)]
+                     effects-without-db (dissoc effects :db)
+                     frame              (-> context :coeffects :frame)]
                  ;; :db effect is guaranteed to be handled before all other effects.
                  (when-let [new-db (:db effects)]
-                   ((get-handler kind :db false) new-db))
+                   ((get-handler kind :db false) new-db frame))
                  (doseq [[effect-key effect-value] effects-without-db]
                    (if-let [effect-fn (get-handler kind effect-key false)]
-                     (effect-fn effect-value)
+                     (if (#{:dispatch :dispatch-n :dispatch-later} effect-key)
+                       (effect-fn effect-value frame)
+                       (effect-fn effect-value))
                      (console :warn "re-frame: no handler registered for effect:" effect-key ". Ignoring."))))))))
 
 ;; -- Builtin Effect Handlers  ------------------------------------------------
@@ -64,7 +67,7 @@
 ;; :dispatch-later
 ;;
 ;; `dispatch` one or more events after given delays. Expects a collection
-;; of maps with two keys:  :`ms` and `:dispatch`
+;; of maps with two keys:  :`ms` and `:dispatch`, and an optional 3rd key `:frame`.
 ;;
 ;; usage:
 ;;
@@ -77,18 +80,18 @@
 ;;                       {:ms 100 :dispatch [:another-one]}]}
 ;;
 (defn dispatch-later
-  [{:keys [ms dispatch] :as effect}]
+  [{:keys [ms dispatch frame] :as effect}]
   (if (or (empty? dispatch) (not (number? ms)))
     (console :error "re-frame: ignoring bad :dispatch-later value:" effect)
-    (set-timeout! #(router/dispatch dispatch) ms)))
+    (set-timeout! #(router/dispatch (or frame app-db) dispatch) ms)))
 
 (reg-fx
   :dispatch-later
-  (fn [value]
+  (fn [value & [frame]]
     (if (map? value)
       (dispatch-later value)
       (doseq [effect (remove nil? value)]
-        (dispatch-later effect)))))
+        (dispatch-later (assoc effect :frame (or frame app-db)))))))
 
 ;; :fx
 ;;
@@ -125,10 +128,10 @@
 
 (reg-fx
   :dispatch
-  (fn [value]
+  (fn [value & [frame]]
     (if-not (vector? value)
       (console :error "re-frame: ignoring bad :dispatch value. Expected a vector, but got:" value)
-      (router/dispatch value))))
+      (router/dispatch (or frame app-db) value))))
 
 
 ;; :dispatch-n
@@ -146,11 +149,10 @@
 ;;
 (reg-fx
   :dispatch-n
-  (fn [value]
+  (fn [value & [frame]]
     (if-not (sequential? value)
       (console :error "re-frame: ignoring bad :dispatch-n value. Expected a collection, but got:" value)
-      (doseq [event (remove nil? value)] (router/dispatch event)))))
-
+      (doseq [event (remove nil? value)] (router/dispatch (or frame app-db) event)))))
 
 ;; :deregister-event-handler
 ;;
@@ -180,7 +182,8 @@
 ;;
 (reg-fx
   :db
-  (fn [value]
-    (if-not (identical? @app-db value)
-      (reset! app-db value))))
+  (fn [value & [frame]]
+    (let [frame (or frame app-db)]
+      (when-not (identical? @frame value)
+        (reset! frame value)))))
 

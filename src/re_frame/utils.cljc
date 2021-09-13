@@ -1,6 +1,21 @@
 (ns re-frame.utils
   (:require
+    [re-frame.db :refer [app-db]]
     [re-frame.loggers :refer [console]]))
+
+(defn frame-from
+  "Extract the current frame from a query or event vector's metadata."
+  [event-or-query-v]
+  (if-let [frame (-> event-or-query-v meta :frame)]
+    frame
+    (do
+      (console :warn "re-frame: expected to find a frame on: " event-or-query-v)
+      app-db)))
+
+(defn with-frame
+  "Add the frame to the event or query vector's metadata."
+  [event-or-query-v frame]
+  (vary-meta event-or-query-v assoc :frame frame))
 
 (defn dissoc-in
   "Dissociates an entry from a nested associative structure returning a new
