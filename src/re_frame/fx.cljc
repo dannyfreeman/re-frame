@@ -2,7 +2,7 @@
   (:require
     [re-frame.router      :as router]
     [re-frame.db          :refer [app-db]]
-    [re-frame.interceptor :refer [->interceptor]]
+    [re-frame.interceptor :refer [->interceptor get-coeffect]]
     [re-frame.interop     :refer [set-timeout!]]
     [re-frame.events      :as events]
     [re-frame.registrar   :refer [get-handler clear-handlers register-handler]]
@@ -51,7 +51,7 @@
                {:op-type :event/do-fx}
                (let [effects            (:effects context)
                      effects-without-db (dissoc effects :db)
-                     frame              (-> context :coeffects :frame)]
+                     frame              (get-coeffect context :frame)]
                  ;; :db effect is guaranteed to be handled before all other effects.
                  (when-let [new-db (:db effects)]
                    ((get-handler kind :db false) new-db frame))
@@ -126,12 +126,30 @@
 ;; usage:
 ;;   {:dispatch [:event-id "param"] }
 
+(defn- dispatch
+  [value frame]
+  (if-not (vector? value)
+    (console :error "re-frame: ignoring bad :dispatch value. Expected a vector, but got:" value)
+    (router/dispatch (or frame app-db) value)))
+
 (reg-fx
   :dispatch
   (fn [value & [frame]]
-    (if-not (vector? value)
-      (console :error "re-frame: ignoring bad :dispatch value. Expected a vector, but got:" value)
-      (router/dispatch (or frame app-db) value))))
+    (dispatch value frame)))
+
+;; :app-db/dispatch
+;;
+;; `dispatch` one event on the global app-db. Expects a single vector.
+;;
+;; The dispatched event will work off app-db even if the event doing the
+;; dispatch used a different frame.
+;;
+;; usage:
+;;   {:app-db/dispatch [:event-id "param"] }
+(reg-fx
+  :app-db/dispatch
+  (fn [value]
+    (dispatch value app-db)))
 
 
 ;; :dispatch-n
@@ -147,12 +165,39 @@
 ;;    {:dispatch-n (list (when (> 3 5) [:conditioned-out])
 ;;                       [:another-one])}
 ;;
+(defn- dispatch-n
+  [value frame]
+  (let [frame (or frame app-db)]
+    (if-not (sequential? value)
+      (console :error "re-frame: ignoring bad :dispatch-n value. Expected a collection, but got:" value)
+      (doseq [event (remove nil? value)] (router/dispatch frame event)))))
+
 (reg-fx
   :dispatch-n
   (fn [value & [frame]]
-    (if-not (sequential? value)
-      (console :error "re-frame: ignoring bad :dispatch-n value. Expected a collection, but got:" value)
-      (doseq [event (remove nil? value)] (router/dispatch (or frame app-db) event)))))
+    (dispatch-n value frame)))
+
+;; :app-db/dispatch-n
+;;
+;; `dispatch` more than one event on the global app-db.
+;; Expects a list or vector of events. Something for which
+;; sequential? returns true.
+;;
+;; The dispatched events will work off app-db even if the event doing the
+;; dispatch used a different frame.
+
+;; usage:
+;;   {:app/dispatch-n (list [:do :all] [:three :of] [:these])}
+;;
+;; Note: nil events are ignored which means events can be added
+;; conditionally:
+;;    {:app-db/dispatch-n (list (when (> 3 5) [:conditioned-out])
+;;                          [:another-one])}
+;;
+(reg-fx
+  :app-db/dispatch-n
+  (fn [value]
+    (dispatch-n value nil)))
 
 ;; :deregister-event-handler
 ;;
@@ -186,4 +231,3 @@
     (let [frame (or frame app-db)]
       (when-not (identical? @frame value)
         (reset! frame value)))))
-
