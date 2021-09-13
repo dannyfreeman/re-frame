@@ -501,6 +501,33 @@
   [id handler]
   (fx/reg-fx id handler))
 
+(defn reg-frame-fx
+  "Register the given effect `handler` for the given `id`:
+
+    - `id` is keyword, often namespaced.
+    - `handler` is a side-effecting function which takes a 2 arguments,
+      the value provided by the event handler, and the frame that was dispatched on.
+      Like reg-fx, the return value of the handler is ignored.
+
+  To use, first, associate `:effect3` with a handler:
+
+      #!clj
+      (reg-frame-fx
+         :effect3
+         (fn [value frame]
+            ... do something side-effect-y with the frame))
+
+  Then, later, if an event handler were to return this effects map:
+
+      #!clj
+      {:effect3  [1 2]}
+
+  then the `handler` `fn` we registered previously, using `reg-frame-fx`, will be
+  called with arguments `[1 2]` and the frame.
+  "
+  {:api-docs/heading "Effect Handlers"}
+  [id handler]
+  (fx/reg-frame-fx id handler))
 
 (defn clear-fx ;; think unreg-fx
   "Unregisters effect handlers (presumably registered previously via the use of `reg-fx`).

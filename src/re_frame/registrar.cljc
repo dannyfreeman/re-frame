@@ -8,7 +8,7 @@
 
 
 ;; kinds of handlers
-(def kinds #{:event :fx :cofx :sub})
+(def kinds #{:event :fx :frame-fx :cofx :sub})
 
 ;; This atom contains a register of all handlers.
 ;; Contains a two layer map, keyed first by `kind` (of handler), and then `id` of handler.
