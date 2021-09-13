@@ -1,6 +1,5 @@
 (ns re-frame.core
   (:require
-    [reagent.ratom             :refer [RAtom]]
     [re-frame.events           :as events]
     [re-frame.subs             :as subs]
     [re-frame.interop          :as interop]
@@ -30,7 +29,9 @@
 (declare dispatch)
 (declare dispatch-sync)
 
-(extend-type RAtom
+
+(extend-type #?(:cljs reagent.ratom.RAtom
+                :clj  clojure.lang.IAtom)
   Frame
   (subscribe-to [this query]
     (subscribe this query))
