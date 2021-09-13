@@ -15,11 +15,29 @@
 (def kind :fx)
 (assert (re-frame.registrar/kinds kind))
 
+(def frame-kind :frame-fx)
+(assert (re-frame.registrar/kinds frame-kind))
+
 (defn reg-fx
   [id handler]
   (register-handler kind id handler))
 
+(defn reg-frame-fx
+  [id handler]
+  (register-handler frame-kind id handler))
+
 ;; -- Interceptor -------------------------------------------------------------
+
+(defn- do-fx-without-db
+  [effects-without-db frame]
+  (doseq [[effect-key effect-value] effects-without-db]
+    (when (= :db effect-key) ;; this should only happen when called from :fx, do-fx removes db
+          (console :warn "re-frame: \":fx\" effect should not contain a :db effect"))
+    (if-let [effect-fn (get-handler frame-kind effect-key false)]
+      (effect-fn effect-value frame)
+      (if-let [effect-fn (get-handler kind effect-key false)]
+        (effect-fn effect-value)
+        (console :warn "re-frame: no handler registered for effect:" effect-key ". Ignoring.")))))
 
 (def do-fx
   "An interceptor whose `:after` actions the contents of `:effects`. As a result,
@@ -54,20 +72,16 @@
                      frame              (get-coeffect context :frame)]
                  ;; :db effect is guaranteed to be handled before all other effects.
                  (when-let [new-db (:db effects)]
-                   ((get-handler kind :db false) new-db frame))
-                 (doseq [[effect-key effect-value] effects-without-db]
-                   (if-let [effect-fn (get-handler kind effect-key false)]
-                     (if (#{:dispatch :dispatch-n :dispatch-later} effect-key)
-                       (effect-fn effect-value frame)
-                       (effect-fn effect-value))
-                     (console :warn "re-frame: no handler registered for effect:" effect-key ". Ignoring."))))))))
+                   ((get-handler frame-kind :db false) new-db frame))
+                 (do-fx-without-db effects-without-db frame))))))
+
 
 ;; -- Builtin Effect Handlers  ------------------------------------------------
 
 ;; :dispatch-later
 ;;
 ;; `dispatch` one or more events after given delays. Expects a collection
-;; of maps with two keys:  :`ms` and `:dispatch`, and an optional 3rd key `:frame`.
+;; of maps with two keys:  :`ms` and `:dispatch`.
 ;;
 ;; usage:
 ;;
@@ -79,19 +93,21 @@
 ;;    {:dispatch-later [ (when (> 3 5) {:ms 200 :dispatch [:conditioned-out]})
 ;;                       {:ms 100 :dispatch [:another-one]}]}
 ;;
-(defn dispatch-later
-  [{:keys [ms dispatch frame] :as effect}]
-  (if (or (empty? dispatch) (not (number? ms)))
-    (console :error "re-frame: ignoring bad :dispatch-later value:" effect)
-    (set-timeout! #(router/dispatch (or frame app-db) dispatch) ms)))
 
-(reg-fx
+(defn dispatch-later
+  [{:keys [ms dispatch] :as effect} & [frame]]
+  (let [frame (or frame app-db)]
+    (if (or (empty? dispatch) (not (number? ms)))
+      (console :error "re-frame: ignoring bad :dispatch-later value:" effect)
+      (set-timeout! #(router/dispatch frame dispatch) ms))))
+
+(reg-frame-fx
   :dispatch-later
-  (fn [value & [frame]]
+  (fn [value frame]
     (if (map? value)
-      (dispatch-later value)
+      (dispatch-later value frame)
       (doseq [effect (remove nil? value)]
-        (dispatch-later (assoc effect :frame (or frame app-db)))))))
+        (dispatch-later effect frame)))))
 
 ;; :fx
 ;;
@@ -107,17 +123,12 @@
 ;;                     ...}]]}
 ;;
 
-(reg-fx
+(reg-frame-fx
   :fx
-  (fn [seq-of-effects]
+  (fn [seq-of-effects frame]
     (if-not (sequential? seq-of-effects)
       (console :error "re-frame: \":fx\" effect expects a seq, but was given " (type seq-of-effects))
-      (doseq [[effect-key effect-value] (remove nil? seq-of-effects)]
-        (when (= :db effect-key)
-          (console :warn "re-frame: \":fx\" effect should not contain a :db effect"))
-        (if-let [effect-fn (get-handler kind effect-key false)]
-          (effect-fn effect-value)
-          (console :warn "re-frame: in \":fx\" effect found " effect-key " which has no associated handler. Ignoring."))))))
+      (do-fx-without-db seq-of-effects frame))))
 
 ;; :dispatch
 ;;
@@ -132,9 +143,9 @@
     (console :error "re-frame: ignoring bad :dispatch value. Expected a vector, but got:" value)
     (router/dispatch (or frame app-db) value)))
 
-(reg-fx
+(reg-frame-fx
   :dispatch
-  (fn [value & [frame]]
+  (fn [value frame]
     (dispatch value frame)))
 
 ;; :app-db/dispatch
@@ -167,14 +178,13 @@
 ;;
 (defn- dispatch-n
   [value frame]
-  (let [frame (or frame app-db)]
-    (if-not (sequential? value)
-      (console :error "re-frame: ignoring bad :dispatch-n value. Expected a collection, but got:" value)
-      (doseq [event (remove nil? value)] (router/dispatch frame event)))))
+  (if-not (sequential? value)
+    (console :error "re-frame: ignoring bad :dispatch-n value. Expected a collection, but got:" value)
+    (doseq [event (remove nil? value)] (router/dispatch frame event))))
 
-(reg-fx
+(reg-frame-fx
   :dispatch-n
-  (fn [value & [frame]]
+  (fn [value frame]
     (dispatch-n value frame)))
 
 ;; :app-db/dispatch-n
@@ -197,7 +207,7 @@
 (reg-fx
   :app-db/dispatch-n
   (fn [value]
-    (dispatch-n value nil)))
+    (dispatch-n value app-db)))
 
 ;; :deregister-event-handler
 ;;
@@ -225,9 +235,8 @@
 ;; usage:
 ;;   {:db  {:key1 value1 key2 value2}}
 ;;
-(reg-fx
+(reg-frame-fx
   :db
-  (fn [value & [frame]]
-    (let [frame (or frame app-db)]
-      (when-not (identical? @frame value)
-        (reset! frame value)))))
+  (fn [value frame]
+    (when-not (identical? @frame value)
+      (reset! frame value))))
