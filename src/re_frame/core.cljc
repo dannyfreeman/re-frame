@@ -1,5 +1,6 @@
 (ns re-frame.core
   (:require
+    [reagent.ratom             :refer [RAtom]]
     [re-frame.events           :as events]
     [re-frame.subs             :as subs]
     [re-frame.interop          :as interop]
@@ -37,8 +38,10 @@
       (dispatch [:order \"pizza\" {:supreme 2 :meatlovers 1 :veg 1}])
   "
   {:api-docs/heading "Dispatching Events"}
-  [event]
-  (router/dispatch event))
+  ([event]
+   (dispatch db/app-db event))
+  ([frame event]
+   (router/dispatch frame event)))
 
 (defn dispatch-sync
   "Synchronously (immediately) process `event`. It does **not** queue
@@ -65,8 +68,10 @@
       (dispatch-sync [:sing :falsetto \"piano accordion\"])
   "
   {:api-docs/heading "Dispatching Events"}
-  [event]
-  (router/dispatch-sync event))
+  ([event]
+   (dispatch-sync db/app-db event))
+  ([frame event]
+   (router/dispatch-sync frame event)))
 
 
 ;; -- Events ------------------------------------------------------------------
@@ -102,7 +107,7 @@
   ([id handler]
    (reg-event-db id nil handler))
   ([id interceptors handler]
-   (events/register id [cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (db-handler->interceptor handler)])))
+   (events/register id [cofx/inject-frame cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (db-handler->interceptor handler)])))
 
 
 (defn reg-event-fx
@@ -137,7 +142,7 @@
   ([id handler]
    (reg-event-fx id nil handler))
   ([id interceptors handler]
-   (events/register id [cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (fx-handler->interceptor handler)])))
+   (events/register id [cofx/inject-frame cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (fx-handler->interceptor handler)])))
 
 
 (defn reg-event-ctx
@@ -169,7 +174,7 @@
   ([id handler]
    (reg-event-ctx id nil handler))
   ([id interceptors handler]
-   (events/register id [cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (ctx-handler->interceptor handler)])))
+   (events/register id [cofx/inject-frame cofx/inject-db fx/do-fx std-interceptors/inject-global-interceptors interceptors (ctx-handler->interceptor handler)])))
 
 (defn clear-event
   "Unregisters event handlers (presumably registered previously via the use of `reg-event-db` or `reg-event-fx`).
@@ -399,9 +404,11 @@
   "
   {:api-docs/heading "Subscriptions"}
   ([query]
-   (subs/subscribe query))
-  ([query dynv]
-   (subs/subscribe query dynv)))
+   (subs/subscribe db/app-db query))
+  ([frame-or-query & args]
+   (if (satisfies? RAtom frame-or-query)
+     (apply subs/subscribe frame-or-query args)
+     (apply subs/subscribe db/app-db args))))
 
 (defn clear-sub ;; think unreg-sub
   "Unregisters subscription handlers (presumably registered previously via the use of `reg-sub`).
