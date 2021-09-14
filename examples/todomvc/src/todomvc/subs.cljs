@@ -1,5 +1,6 @@
 (ns todomvc.subs
-  (:require [re-frame.core :refer [reg-sub subscribe]]))
+  (:require [re-frame.core :refer [reg-sub subscribe]]
+            [re-frame.utils :refer [frame-from]]))
 
 ;; -------------------------------------------------------------------------------------
 ;; Layer 2
@@ -16,7 +17,6 @@
   :showing          ;; usage:   (subscribe [:showing])
   (fn [db _]        ;; db is the (map) value stored in the app-db atom
     (:showing db))) ;; extract a value from the application state
-
 
 ;; Next, the registration of a similar handler is done in two steps.
 ;; First, we `defn` a pure handler function.  Then, we use `reg-sub` to register it.
@@ -67,7 +67,7 @@
   ;; X will be the query vector and Y is an advanced feature and out of scope
   ;; for this explanation.
   (fn [query-v _]
-    (subscribe [:sorted-todos]))    ;; returns a single input signal
+    (subscribe (frame-from query-v) [:sorted-todos]))    ;; returns a single input signal
 
   ;; This 2nd fn does the computation. Data values in, derived data out.
   ;; It is the same as the two simple subscription handlers up at the top.
@@ -94,8 +94,8 @@
   ;; Tells us what inputs flow into this node.
   ;; Returns a vector of two input signals (in this case)
   (fn [query-v _]
-    [(subscribe [:todos])
-     (subscribe [:showing])])
+    [(subscribe (frame-from query-v) [:todos])
+     (subscribe [:showing])]) ;; showing comes from app-db
 
   ;; Computation Function
   (fn [[todos showing] _]   ;; that 1st parameter is a 2-vector of values
@@ -162,3 +162,8 @@
   :<- [:completed-count]
   (fn [[todos completed] _]
     [(- (count todos) completed) completed]))
+
+(reg-sub
+  :click
+  (fn [db]
+    (get db :click :not-set)))

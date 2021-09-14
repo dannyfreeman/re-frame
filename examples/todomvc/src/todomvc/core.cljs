@@ -1,8 +1,10 @@
 (ns todomvc.core
   (:require-macros [secretary.core :refer [defroute]])
   (:require [goog.events :as events]
+            [reagent.core]
             [reagent.dom]
             [re-frame.core :as rf :refer [dispatch dispatch-sync]]
+            [re-frame.frame :refer [app-db-context-id]]
             [secretary.core :as secretary]
             [todomvc.events] ;; These two are only required to make the compiler
             [todomvc.subs]   ;; load them (see docs/App-Structure.md)
@@ -19,7 +21,7 @@
 ;; The event handler for `:initialise-db` can be found in `events.cljs`
 ;; Using the sync version of dispatch means that value is in
 ;; place before we go onto the next step.
-(dispatch-sync [:initialise-db])
+(dispatch-sync [:initialise-db app-db-context-id])
 
 ;; -- Routes and History ------------------------------------------------------
 ;; Although we use the secretary library below, that's mostly a historical
@@ -28,8 +30,10 @@
 ;;   - https://github.com/juxt/bidi
 ;; We don't have a strong opinion.
 ;;
-(defroute "/" [] (dispatch [:set-showing :all]))
-(defroute "/:filter" [filter] (dispatch [:set-showing (keyword filter)]))
+(defroute "/" []
+  (dispatch [:set-showing :all]))
+(defroute "/:filter" [filter]
+  (dispatch [:set-showing (keyword filter)]))
 
 (defonce history
   (doto (History.)
@@ -40,13 +44,16 @@
 
 ;; -- Entry Point -------------------------------------------------------------
 
+(def functional-compiler (reagent.core/create-compiler {:function-components true}))
+
 (defn render
   []
   ;; Render the UI into the HTML's <div id="app" /> element
   ;; The view function `todomvc.views/todo-app` is the
   ;; root view for the entire UI.
-  (reagent.dom/render [todomvc.views/todo-app]
-                      (.getElementById js/document "app")))
+  (reagent.dom/render [todomvc.views/todo-apps]
+                      (.getElementById js/document "app")
+                      functional-compiler))
 
 (defn ^:dev/after-load clear-cache-and-render!
   []

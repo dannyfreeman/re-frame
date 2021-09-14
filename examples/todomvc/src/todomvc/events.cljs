@@ -76,8 +76,8 @@
 ;; A chain of interceptors is a vector of interceptors.
 ;; Explanation of the `path` Interceptor is given further below.
 (def todo-interceptors [check-spec-interceptor    ;; ensure the spec is still valid  (after)
-                        (path :todos)             ;; the 1st param given to handler will be the value from this path within db
-                        ->local-store])            ;; write todos to localstore  (after)
+                        ->local-store             ;; write todos to localstore  (after path interceptor)
+                        (path :todos)])           ;; the 1st param given to handler will be the value from this path within db
 
 
 ;; -- Helpers -----------------------------------------------------------------
@@ -115,8 +115,11 @@
    check-spec-interceptor]          ;; after event handler runs, check app-db for correctness. Does it still match Spec?
 
   ;; the event handler (function) being registered
-  (fn [{:keys [db local-store-todos]} _]                  ;; take 2 values from coeffects. Ignore event vector itself.
-    {:db (assoc default-db :todos local-store-todos)}))   ;; all hail the new state to be put in app-db
+  (fn [{:keys [db local-store-todos]} [_ app-id]]                  ;; take 2 values from coeffects. Ignore event vector itself.
+    {:db (merge db
+                (-> default-db
+                    (assoc :todos local-store-todos
+                           :app-id app-id)))}))
 
 
 ;; usage:  (dispatch [:set-showing  :active])
@@ -147,10 +150,10 @@
 ;; So, `path` operates a little like `update-in`
 ;;
 #_(reg-event-db
-  :set-showing
+   :set-showing
 
   ;; this now a chain of 2 interceptors. Note use of `path`
-  [check-spec-interceptor (path :showing)]
+   [check-spec-interceptor (path :showing)]
 
   ;; The event handler
   ;; Because of the `path` interceptor above, the 1st parameter to
@@ -158,8 +161,8 @@
   ;; be the value at the path `[:showing]` within db.
   ;; Equally the value returned will be the new value for that path
   ;; within app-db.
-  (fn [old-showing-value [_ new-showing-value]]
-    new-showing-value))                  ;; return new state for the path
+   (fn [old-showing-value [_ new-showing-value]]
+     new-showing-value))                  ;; return new state for the path
 
 
 ;; usage:  (dispatch [:add-todo  "a description string"])
@@ -221,3 +224,8 @@
       (reduce #(assoc-in %1 [%2 :done] new-done)
               todos
               (keys todos)))))
+
+(reg-event-db
+  :click
+  (fn [db]
+    (update db :click (fnil inc 0))))

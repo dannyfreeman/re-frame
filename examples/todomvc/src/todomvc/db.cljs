@@ -25,13 +25,13 @@
 (s/def ::todo (s/keys :req-un [::id ::title ::done]))
 (s/def ::todos (s/and                                       ;; should use the :kind kw to s/map-of (not supported yet)
                  (s/map-of ::id ::todo)                     ;; in this map, each todo is keyed by its :id
-                 #(instance? PersistentTreeMap %)           ;; is a sorted-map (not just a map)
-                 ))
+                 #(instance? PersistentTreeMap %)))           ;; is a sorted-map (not just a map)
+                 
 (s/def ::showing                                            ;; what todos are shown to the user?
   #{:all                                                    ;; all todos are shown
     :active                                                 ;; only todos whose :done is false
-    :done                                                   ;; only todos whose :done is true
-    })
+    :done})                                                   ;; only todos whose :done is true
+    
 (s/def ::db (s/keys :req-un [::todos ::showing]))
 
 ;; -- Default app-db Value  ---------------------------------------------------
@@ -56,12 +56,11 @@
 ;; filter. Just the todos.
 ;;
 
-(def ls-key "todos-reframe")                         ;; localstore key
 
 (defn todos->local-store
   "Puts todos into localStorage"
-  [todos]
-  (.setItem js/localStorage ls-key (str todos)))     ;; sorted-map written as an EDN map
+  [{:keys [app-id todos] :as db}]
+  (.setItem js/localStorage app-id (str todos))) ;; sorted-map written as an EDN map
 
 
 ;; -- cofx Registrations  -----------------------------------------------------
@@ -77,11 +76,12 @@
 ;;
 (re-frame/reg-cofx
   :local-store-todos
-  (fn [cofx _]
+  (fn [{:keys [event] :as cofx} _]
       ;; put the localstore todos into the coeffect under :local-store-todos
-      (assoc cofx :local-store-todos
-             ;; read in todos from localstore, and process into a sorted map
-             (into (sorted-map)
-                   (some->> (.getItem js/localStorage ls-key)
-                            (cljs.reader/read-string)    ;; EDN map -> map
-                            )))))
+    (assoc cofx :local-store-todos
+           ;; read in todos from localstore, and process into a sorted map
+           (into (sorted-map)
+                 (some->> (.getItem js/localStorage (second event))
+                          (cljs.reader/read-string))))))    ;; EDN map -> map
+
+
