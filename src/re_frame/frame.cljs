@@ -49,9 +49,7 @@
          ;; Note this is only done because of how the frames are stored in the frame-context-registry.
          ;; Normal ratoms will work just fine outside of this context.
          r (interop/make-reaction #(deref frame)
-                                  :on-dispose #(do
-                                                 (prn :im-disposin context-id)
-                                                 (swap! frame-context-registry dissoc context-id))
+                                  :on-dispose #(swap! frame-context-registry dissoc context-id)
                                   :on-set (fn [_ next] (reset! frame next)))]
      (swap! frame-context-registry assoc context-id r)
      (fn [next-props component & component-props]
