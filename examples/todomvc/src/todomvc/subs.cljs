@@ -133,15 +133,15 @@
 ;; vector of input signals. The 1st function is not needed.
 ;; Here is the example above rewritten using the sugar.
 #_(reg-sub
-  :visible-todos
-  :<- [:todos]
-  :<- [:showing]
-  (fn [[todos showing] _]
-    (let [filter-fn (case showing
-                      :active (complement :done)
-                      :done   :done
-                      :all    identity)]
-      (filter filter-fn todos))))
+   :visible-todos
+   :<- [:todos]
+   :<- [:showing]
+   (fn [[todos showing] _]
+      (let [filter-fn (case showing
+                         :active (complement :done)
+                         :done   :done
+                         :all    identity)]
+         (filter filter-fn todos))))
 
 
 (reg-sub
