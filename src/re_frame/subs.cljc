@@ -1,7 +1,7 @@
 (ns re-frame.subs
  (:require
    [re-frame.db        :refer [app-db]]
-   [re-frame.interop   :refer [add-on-dispose! debug-enabled? make-reaction ratom? deref? dispose! reagent-id]]
+   [re-frame.interop   :refer [add-on-dispose! debug-enabled? make-reaction ratom? deref? dispose! reagent-id reactive-context?]]
    [re-frame.loggers   :refer [console]]
    [re-frame.utils     :refer [first-in-vector]]
    [re-frame.registrar :refer [get-handler clear-handlers register-handler]]
@@ -35,25 +35,28 @@
 (defn cache-and-return
   "cache the reaction r"
   [query-v dynv r]
-  (let [cache-key [query-v dynv]]
-    ;; when this reaction is no longer being used, remove it from the cache
-    (add-on-dispose! r #(trace/with-trace {:operation (first-in-vector query-v)
-                                           :op-type   :sub/dispose
-                                           :tags      {:query-v  query-v
-                                                       :reaction (reagent-id r)}}
-                                          (swap! query->reaction
-                                                 (fn [query-cache]
-                                                   (if (and (contains? query-cache cache-key) (identical? r (get query-cache cache-key)))
-                                                     (dissoc query-cache cache-key)
-                                                     query-cache)))))
-    ;; cache this reaction, so it can be used to deduplicate other, later "=" subscriptions
-    (swap! query->reaction (fn [query-cache]
-                             (when debug-enabled?
-                               (when (contains? query-cache cache-key)
-                                 (console :warn "re-frame: Adding a new subscription to the cache while there is an existing subscription in the cache" cache-key)))
-                             (assoc query-cache cache-key r)))
-    (trace/merge-trace! {:tags {:reaction (reagent-id r)}})
-    r)) ;; return the actual reaction
+  ;; If a subscription were cached outside of a reactive context, then it may never
+  ;; have it's on-dispose function run, creating a memory leak in the subscription cache.
+  (when (reactive-context?)
+    (let [cache-key [query-v dynv]]
+      ;; when this reaction is no longer being used, remove it from the cache
+      (add-on-dispose! r #(trace/with-trace {:operation (first-in-vector query-v)
+                                             :op-type   :sub/dispose
+                                             :tags      {:query-v  query-v
+                                                         :reaction (reagent-id r)}}
+                                            (swap! query->reaction
+                                                   (fn [query-cache]
+                                                     (if (and (contains? query-cache cache-key) (identical? r (get query-cache cache-key)))
+                                                       (dissoc query-cache cache-key)
+                                                       query-cache)))))
+      ;; cache this reaction, so it can be used to deduplicate other, later "=" subscriptions
+      (swap! query->reaction (fn [query-cache]
+                               (when debug-enabled?
+                                 (when (contains? query-cache cache-key)
+                                   (console :warn "re-frame: Adding a new subscription to the cache while there is an existing subscription in the cache" cache-key)))
+                               (assoc query-cache cache-key r)))
+      (trace/merge-trace! {:tags {:reaction (reagent-id r)}})))
+  r) ;; return the actual reaction
 
 (defn cache-lookup
   ([query-v]

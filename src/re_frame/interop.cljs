@@ -72,3 +72,7 @@
            reagent.ratom/Track "tr"
            "other")
          (hash reactive-val))))
+
+(defn ^boolean reactive-context?
+  []
+  (reagent.ratom/reactive?))
